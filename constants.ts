@@ -6,9 +6,9 @@ export const SERVICE_ACCOUNT = process.env.SERVICE_ACCOUNT ?? "";
 
 //TO CHANGE: Change these constants as you wish to match the year's applications.
 export const PERSONAL_INFO_SHEET = "Personal Info";
-export const NAME_ROW_INDEX = 2;
-export const EMAIL_ROW_INDEX = 1;
-export const SOCIALS_ROW_INDEX = 6;
+export const NAME_ROW_COLUMN = "C";
+export const EMAIL_ROW_COLUMN = "B";
+export const SOCIALS_ROW_COLUMN = "G";
 export const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 // Change these values to match the column names that correspond to the question ranges for each committee!
