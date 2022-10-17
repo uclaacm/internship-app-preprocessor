@@ -1,57 +1,39 @@
 import * as dotenv from "dotenv";
 import { google } from "googleapis";
-import { sheets_v4 } from "googleapis";
+import {
+  ALPHABET,
+  COMMITTEE_QUESTION_COLS,
+  Committees,
+  EMAIL_ROW_INDEX,
+  GENERAL_QUESTION_COLS,
+  NAME_ROW_INDEX,
+  PERSONAL_INFO_SHEET,
+  SERVICE_ACCOUNT,
+  SOCIALS_ROW_INDEX,
+  SPREADSHEET_ID,
+} from "./constants";
 
 dotenv.config();
 
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const SERVICE_ACCOUNT = process.env.SERVICE_ACCOUNT ?? "";
-const PERSONAL_INFO_SHEET = "Personal Info";
-const NAME_ROW_INDEX = 2;
-const EMAIL_ROW_INDEX = 1;
-const SOCIALS_ROW_INDEX = 6;
-const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
 //A is index 0, AA is index 26, BA is index 52, etc
 //start,end
-// function columnToIndex(str: string) {
-//   const input = str.toUpperCase();
-//   const inputLen = input.length;
-//   let rV = 0;
-//   if (inputLen > 1) {
-//     return 26 * (ALPHABET.indexOf(input[0]) + 1) + ALPHABET.indexOf(input[1]);
-//   } else {
-//     return ALPHABET.indexOf(input);
-//   }
-// }
 
-enum Committees {
-  GENERAL_QUESTIONS = "GENERAL_QUESTIONS",
-  BOARD = "BOARD",
-  DEV_TEAM = "DEV_TEAM",
-  AI = "AI",
-  CYBER = "CYBER",
-  DESIGN = "DESIGN",
-  HACK = "HACK",
-  ICPC = "ICPC",
-  STUDIO = "STUDIO",
-  TEACH_LA = "TEACH_LA",
-  W = "W",
+//Function to map columns in Google Sheets A1 notation to notation of an array
+//Only works of up to ~700ish questions or up to ZZ, but I doubt we'll go past that ever
+function columnToIndex(str: string) {
+  const input = str.toUpperCase();
+  const inputLen = input.length;
+  if (inputLen > 1) {
+    return 26 * (ALPHABET.indexOf(input[0]) + 1) + ALPHABET.indexOf(input[1]);
+  } else {
+    return ALPHABET.indexOf(input);
+  }
 }
 
-const COMMITTEE_QUESTION_COLS = {
-  GENERAL_QUESTIONS: ["D", "...", "F"],
-  BOARD: ["I", "...", "Y"],
-  DEV_TEAM: ["Z", "...", "AF"],
-  AI: ["AG", "...", "AM"],
-  CYBER: ["AN", "...", "AQ"],
-  DESIGN: ["AR", "...", "AW"],
-  HACK: ["AX", "...", "AZ"],
-  ICPC: ["BA", "...", "BC"],
-  STUDIO: ["BD", "...", "BH"],
-  TEACH_LA: ["BI", "...", "BO"],
-  W: ["BP", "...", "BT"],
-};
+const GENERAL_QUESTION_START = columnToIndex(GENERAL_QUESTION_COLS[0]);
+const GENERAL_QUESTION_END = columnToIndex(
+  GENERAL_QUESTION_COLS[GENERAL_QUESTION_COLS.length - 1]
+);
 
 async function main() {
   //do auth
@@ -135,17 +117,79 @@ async function main() {
         values: personal_info,
       },
     });
+
+    return rows;
   }
 
-  async function createCommitteeTabs(committee: Committees) {
+  async function getCommitteeApplicants(
+    committee: Committees,
+    rows: string[][]
+  ) {
+    //list of committee applicants
+    const committeeApplicants: string[][] = [];
+    const COMMITTEE_QUESTION_START = columnToIndex(
+      COMMITTEE_QUESTION_COLS[committee][0]
+    );
+
+    const COMMITTEE_QUESTION_END = columnToIndex(
+      COMMITTEE_QUESTION_COLS[committee][
+        COMMITTEE_QUESTION_COLS[committee].length - 1
+      ]
+    );
+    const question_headers = ["Applicant ID"].concat(
+      rows[0]
+        .slice(GENERAL_QUESTION_START, GENERAL_QUESTION_END + 1)
+        .concat(
+          rows[0].slice(COMMITTEE_QUESTION_START, COMMITTEE_QUESTION_END + 1)
+        )
+    );
+    for (let i = 1; i < rows.length; i++) {
+      const applicantIndex = i + 1;
+      //add that current row to the committee's applicants pool if they applied for that committee
+      if (rows[i][COMMITTEE_QUESTION_START]) {
+        //start applicant info with their ID
+        //assuming constant range of questions
+
+        //applicantInfo.concat
+        const applicantInfo = rows[i]
+          .slice(GENERAL_QUESTION_START, GENERAL_QUESTION_END + 1)
+          .concat(
+            rows[i].slice(COMMITTEE_QUESTION_START, COMMITTEE_QUESTION_END + 1)
+          );
+        committeeApplicants.push(
+          [applicantIndex.toString()].concat(applicantInfo)
+        );
+      }
+    }
+
+    const committeeSheetValues = [question_headers].concat(committeeApplicants);
+
+    //batch write the committeeSheetValues
+    await sheets.spreadsheets.values.append({
+      auth: jwtClient,
+      spreadsheetId: SPREADSHEET_ID,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      range: committee,
+      requestBody: {
+        majorDimension: "ROWS",
+        range: committee,
+        values: committeeSheetValues,
+      },
+    });
+  }
+
+  async function createCommitteeTabs(committee: Committees, rows: string[][]) {
     await createSheet(committee);
-    // getInfo(committee); // call function that gets info + ID for each applicant to that committee
+    await getCommitteeApplicants(committee, rows); // call function that gets info + ID for each applicant to that committee
   }
 
-  // get personal info sheet
-  await parsePersonalInfo();
+  // get all rows responses
+  const rows = await parsePersonalInfo();
   // parse out committee info
-  Object.values(Committees).map((committee) => createCommitteeTabs(committee));
+  Object.values(Committees).map((committee) =>
+    createCommitteeTabs(committee, rows)
+  );
 }
 
 main();
